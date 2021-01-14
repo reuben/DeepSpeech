@@ -206,9 +206,9 @@ def calculate_mean_edit_distance_and_loss(model, iterator):
 # we will use the Adam method for optimization (http://arxiv.org/abs/1412.6980),
 # because, generally, it requires less fine-tuning.
 def create_optimizer(learning_rate_var):
-    optimizer = tfv1.train.AdamOptimizer(learning_rate=learning_rate_var,
-                                         beta1=FLAGS.beta1,
-                                         beta2=FLAGS.beta2,
+    optimizer = tf.keras.optimizers.Adam(learning_rate=learning_rate_var,
+                                         beta_1=FLAGS.beta1,
+                                         beta_2=FLAGS.beta2,
                                          epsilon=FLAGS.epsilon)
     return optimizer
 
@@ -258,10 +258,10 @@ def get_tower_results(model, iterator, optimizer):
                 tower_avg_losses.append(avg_loss)
 
                 # Compute gradients for model parameters using tower's mini-batch
-                gradients = optimizer.compute_gradients(avg_loss)
+                gradients = tf.gradients(avg_loss, model.trainable_variables)
 
                 # Retain tower's gradients
-                tower_gradients.append(gradients)
+                tower_gradients.append(zip(gradients, model.trainable_variables))
 
                 tower_non_finite_files.append(non_finite_files)
 
@@ -430,7 +430,12 @@ def train():
 
         # global_step is incremented by the optimizer
         global_step = tfv1.train.get_or_create_global_step()
-        apply_gradient_op = optimizer.apply_gradients(avg_tower_gradients, global_step)
+
+        # Apply gradients and increment global step at once
+        apply_gradient_op = tf.group(
+            optimizer.apply_gradients(avg_tower_gradients),
+            global_step.assign_add(1, read_value=False)
+        )
 
         # Summaries
         step_summaries_op = tfv1.summary.merge_all('step_summaries')
@@ -706,7 +711,7 @@ def export():
     '''
     log_info('Exporting the model...')
 
-    with tfv1.Session() as session:
+    with tfv1.Session(config=Config.session_config) as session:
         inputs, outputs, _ = create_inference_graph(batch_size=FLAGS.export_batch_size, n_steps=FLAGS.n_steps, tflite=FLAGS.export_tflite)
 
         graph_version = int(file_relative_read('GRAPH_VERSION').strip())

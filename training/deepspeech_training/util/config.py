@@ -15,6 +15,8 @@ from .helpers import parse_file_size
 from .augmentations import parse_augmentations
 from .io import path_exists_remote
 
+from tensorflow.core.protobuf import rewriter_config_pb2
+
 class ConfigSingleton:
     _config = None
 
@@ -76,6 +78,8 @@ def initialize_globals():
                                         inter_op_parallelism_threads=FLAGS.inter_op_parallelism_threads,
                                         intra_op_parallelism_threads=FLAGS.intra_op_parallelism_threads,
                                         gpu_options=tfv1.GPUOptions(allow_growth=FLAGS.use_allow_growth))
+    c.session_config.graph_options.rewrite_options.arithmetic_optimization = rewriter_config_pb2.RewriterConfig.OFF
+    c.session_config.graph_options.rewrite_options.memory_optimization = rewriter_config_pb2.RewriterConfig.OFF
 
     # CPU device
     c.cpu_device = '/cpu:0'
