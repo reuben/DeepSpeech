@@ -244,26 +244,31 @@ def get_tower_results(model, iterator, optimizer):
     # Aggregate any non finite files in the batches
     tower_non_finite_files = []
 
-    with tfv1.variable_scope(tfv1.get_variable_scope()):
+    with tfv1.variable_scope(tfv1.get_variable_scope()) as scope:
         # Loop over available_devices
         for i in range(len(Config.available_devices)):
             # Execute operations of tower i on device i
             device = Config.available_devices[i]
             with tf.device(device):
-                # Calculate the avg_loss and mean_edit_distance and retrieve the decoded
-                # batch along with the original batch's labels (Y) of this tower
-                avg_loss, non_finite_files = calculate_mean_edit_distance_and_loss(model, iterator)
+                # Create a scope for all operations of tower i
+                with tf.name_scope('tower_%d' % i):
+                    # Calculate the avg_loss and mean_edit_distance and retrieve the decoded
+                    # batch along with the original batch's labels (Y) of this tower
+                    avg_loss, non_finite_files = calculate_mean_edit_distance_and_loss(model, iterator)
 
-                # Retain tower's avg losses
-                tower_avg_losses.append(avg_loss)
+                    # Allow for variables to be re-used by the next tower
+                    # scope.reuse_variables()
 
-                # Compute gradients for model parameters using tower's mini-batch
-                gradients = tf.gradients(avg_loss, model.trainable_variables)
+                    # Retain tower's avg losses
+                    tower_avg_losses.append(avg_loss)
 
-                # Retain tower's gradients
-                tower_gradients.append(zip(gradients, model.trainable_variables))
+                    # Compute gradients for model parameters using tower's mini-batch
+                    gradients = tf.gradients(avg_loss, model.trainable_variables)
 
-                tower_non_finite_files.append(non_finite_files)
+                    # Retain tower's gradients
+                    tower_gradients.append(zip(gradients, model.trainable_variables))
+
+                    tower_non_finite_files.append(non_finite_files)
 
     avg_loss_across_towers = tf.reduce_mean(input_tensor=tower_avg_losses, axis=0)
     tfv1.summary.scalar(name='step_loss', tensor=avg_loss_across_towers, collections=['step_summaries'])
@@ -420,7 +425,9 @@ def train():
             log_info('Enabling automatic mixed precision training.')
             optimizer = tfv1.train.experimental.enable_mixed_precision_graph_rewrite(optimizer)
 
-        model = Model(dropout_rates)
+        with tf.name_scope('DeepSpeech_v{}'.format(int(file_relative_read('GRAPH_VERSION').strip()))):
+            model = Model(dropout_rates)
+            model.build(input_shape=tfv1.data.get_output_shapes(train_set)[1][0])
 
         gradients, loss, non_finite_files = get_tower_results(model, iterator, optimizer)
 
